@@ -28,7 +28,7 @@ function printData() {
 }
 ```
 
-These features are ideal for progressively consuming data stored in collections or lazily-produced by computations. However they are not well-suited to consuming asynchronous streams of information, because Iteration is synchronous. 
+The iterator type is ideal for progressively consuming data that can be synchronously produced on-demand. However an iterator cannot be uesd to model streams of information that are pushed to the consumer.
 
 The push generator proposal attempts to solve this problem by adding symmetrical support for Observation to ES7. It would introduce asynchronous generator functions for producing data via _observation_, and a new for..._on_ loop for consuming data via observation. The for...on loop can be ued in any function that pushes its results, including asynchronous functions (proposed for ES7) which push their final value via a promise.
 
@@ -165,7 +165,7 @@ In this example a consumer requests an Iterator from an Array, and progressively
 ```JavaScript
 function printNums(arr) {
   // requesting an iterator from the Array, which is an Iterable
-  var iterator = arr[@@iterator](),
+  var iterator = arr[Symbol.iterator](),
     pair;
   // consumer (this function)
   while(!(pair = iterator.next()).done) {
@@ -188,7 +188,7 @@ ES6 added great support for Iteration, but currently there is no equivalent of t
 
 ```JavaScript
 interface Iterable {
-  Generator @@iterator()
+  Generator [Symbol.iterator]()
 }
 ```
 
@@ -202,7 +202,7 @@ Therefore all that is left to do is swap the arguments and return type of the It
 
 ```JavaScript
 interface Observable {
-  void @@observer(Generator observer)
+  void [Symbol.observer](Generator observer)
 }
 ```
 
@@ -210,7 +210,7 @@ This interface is too simple. If iteration and observation can be thought of as 
 
 ```JavaScript
 interface Observable {
-  Generator @@observer(Generator observer)
+  Generator [Symbol.observer](Generator observer)
 }
 ```
 
@@ -289,12 +289,12 @@ Observable is the data type that a function modified by both * and async returns
 | function      | T             | Promise<T>    |
 | function*     | Iterator<T>   | Observable<T> |
 
- An Observable accepts a generator and pushes it 0...N values and optionally terminates by either pushing an error or a return value. The consumer can also short-circuit by calling return() on the Generator object returned from the Observable's @@observer method. 
+ An Observable accepts a generator and pushes it 0...N values and optionally terminates by either pushing an error or a return value. The consumer can also short-circuit by calling return() on the Generator object returned from the Observable's Symbol.observer method. 
 
 In ES7, any collection that is Iterable should also be Observable. Here is an implementation for Array.
 
 ```
-Array.prototype[@@observer] = function(observer) {
+Array.prototype[Symbol.observer] = function(observer) {
   var done,
     decoratedObserver = decorate(observer, () => done = true);
     
@@ -821,4 +821,3 @@ function getStockPrices(stockNames, nameServiceUrl) {
     });
 }
 ```
-
