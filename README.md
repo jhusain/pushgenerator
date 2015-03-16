@@ -1,16 +1,32 @@
-# Push Generator Proposal (ES7)
+# Push Generator Proposal (ES2016)
 
-Push Generators are currently proposed for ES7 and are at the strawman phase. This proposal builds on the [async function](https://github.com/lukehoban/ecmascript-asyncawait) proposal.
+Push Generators are a proposal for ES2016. They are an alternative to the Async Generator proposal currently in the strawman stage.
 
-JavaScript programs are single-threaded and therefore must streadfastly avoid blocking on IO operations. Today web developers must deal with a steadily increasing number of push stream APIs:
+## The Problem
+
+JavaScript programs are single-threaded and therefore must steadfastly avoid blocking on IO operations. Today web developers must deal with a steadily-increasing number of push stream APIs including...
 
 * Server sent events
 * Web sockets
 * DOM events
 
-Developers should be able to easily consume these push data sources, as well as compose them together to build complex concurrent programs.
+Unfortunately consuming these data sources in JavaScript is inconvenient.  Asynchronous functions (proposed for ES7) provide language support for functions that push a single result, allowing loops and try/catch to be used for control flow and error handling respectively. ES6 introduced language support for producing and consuming functions that return multiple results. However no language support is currently proposed for functions that push multiple values. The push generator proposal is intended to resolve this discrepancy, and add symmetrical support for push and pull functions in JavaScript. 
 
-ES6 introduced generator functions for producing data via iteration, and a new for...of loop for consuming data via iteration.
+## Iteration and Observation
+
+Iteration and Observation are two patterns which allow a consumer to progressively consume multiple values produced by a producer. In each of these patterns, the producer may produce one of three types of notifications:
+
+a) a value
+b) an error
+c) a final value
+
+When the producer notifies the consumer of an error or a final value, no further values will be produced.  Furthermore in both patterns the producer or consumer should be able to short-circuit at any time and elect to produce or receive no further notifications.
+
+### Iteration
+
+Iteration puts the consumer in control. In iteration the producer waits for the consumer to *pull* a value. The consumer may synchronously or asynchronously *pull* values from the producer (iterator), and the producer must synchronously produce values.
+
+In ES6, language support was added for producing and consuming values via iteration.
 
 ```JavaScript
 // data producer
@@ -21,16 +37,84 @@ function* nums() {
 }
 
 // data consumer
-function printData() {
-  for(var x of nums()) {
+for(var x of nums()) {
+  console.log(x);
+}
+```
+
+Generator functions are considered *pull* functions, because the producer delivers notifications in the return position of function. This is evident in the desugared version of the for...of statement:
+
+```JavaScript
+var generator = nums(),
+  pair;
+
+// value received in return position of next()
+while(!(pair = generator.next()).done) {
+  console.log(pair.value);
+}
+```
+
+The producer may end the stream by either throwing when next is called or returning an IterationResult with a done value of true. The consumer may short-circuit the iteration process by invoking the return() method on the data producer (iterator).
+```JavaScript
+generator.return();
+```
+Note that there is no way for the producer to asynchronously notify the consumer that the stream has completed. Instead  the producer must wait until the consumer requests a new value to indicate stream completion.
+
+Iteration works well for consuming streams of values that can be produced synchronously, such as in-memory collections or lazily-computed values  (ex. fibonnacci sequence).  However it is not possible to push streams such as DOM events or Websockets as iterators, because they produce their values asynchronously. For these data sources is necessary to use observation.
+
+### Observation
+
+Observation puts the producer in control. The producer may synchronously or asynchronouly *push* values to the consumer's sink (observer), but the consumer must handle each value synchronously.  In observation the consumer waits for the producer to *push* a value.
+
+The push generator proposal would add support for producing and consuming push streams of data to ES2016:
+
+```JavaScript
+// data producer
+function^^ nums() {
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+// data consumer
+function^^ consume() {
+  for(var x on nums()) {
     console.log(x);
   }
 }
 ```
 
-The iterator type is ideal for progressively consuming data that can be synchronously produced on-demand. However an iterator cannot be uesd to model streams of information that are pushed to the consumer.
+Push Generator functions are considered *push*, because the producer delivers notifications in the return position of function. This is evident in the desugared version of the for...of statement:
 
-The push generator proposal attempts to solve this problem by adding symmetrical support for Observation to ES7. It would introduce asynchronous generator functions for producing data via _observation_, and a new for..._on_ loop for consuming data via observation. The for...on loop can be ued in any function that pushes its results, including asynchronous functions (proposed for ES7) which push their final value via a promise.
+```JavaScript
+var generator = nums(),
+  pair;
+
+// value received in return position of next()
+while(!(pair = generator.next()).done) {
+  console.log(pair.value);
+}
+```
+
+The producer may end the stream by either throwing when next is called or returning an IterationResult with a done value of true. The consumer may short-circuit the iteration process by invokingthe return() method on the data producer (iterator).
+```JavaScript
+generator.return();
+```
+Note that there is no way for the producer to asynchronously notify the consumer that the stream has completed. Instead  the producer must wait until the consumer requests a new value to indicate stream completion.
+
+Iteration works well for consuming streams of values that can be produced synchronously, such as in-memory collections or lazily-computed values  (ex. fibonnacci sequence).  However it is not possible to push streams such as DOM events or Websockets as iterators, because they produce their values asynchronously. For these data sources is necessary to use observation.
+
+Inside of a push function, the for...on loop can be used to consume the values including asynchronous functions (proposed for ES7) which push their final value via a Promise.
+
+The push generator proposal would add symmetrical support for Iteration and Observation to JavaScript. Like generator functions, *push generator functions* allow functions to return multiple values. However push generator functions send values to consumers via *Observation* rather than Iteration. The for..._on_ loop is also introduced to enable values to be consumed via observation.
+
+
+
+ES6 introduced generator functions for producing data via *iteration*, and a new for...of loop for consuming data via iteration.
+
+
+
+
 
 ```JavaScript
 // data producer
@@ -48,7 +132,7 @@ async function printData() {
 }
 ```
 
-The for..._on_ loop would allow any of the web's many push data streams to be consumed using the simple and familiar loop syntax. Here's an example that of an push generator function that generates an asynchronous stream of stock price deltas. 
+The for..._on_ loop would allow any of the web's many push data streams to be consumed using the simple and familiar loop syntax. Here's an example that of an push generator function that generates an Observable stream of stock price deltas. 
 
 ```JavaScript
 function^^ getPriceSpikes(stockSymbol, threshold) {
@@ -86,37 +170,13 @@ The for...on loop can be used in any function that pushes its result. This inclu
   }
 }());
 ```
+## Push and Pull, Sync and Async
 
-## Pull and Push
-
-An ES6 generator function differs from a normal function, in that it returns multiple values:
-
-```JavaScript
-function *nums() {
-  yield 1;
-  yield 2;
-}
-
-for(var num of nums) {
-  console.log(num);
-}
-```
-
-An obvious question presents itself: _"What Is the push version of a generator?"_
+Pull functions produce the results in the return position of the function.
 
 ```JavaScript
-function ^^getStockPrices(stockName, currency) {
-  for(var price on getPrices(await getStockSymbol(stockName))) {
-    yield convert(price, currency);
-  }
-}
 
-// What type is prices?
-var prices = getStockPrices("JNJ", "CAN");
 ```
-
-If a generator function modifies a function and causes it to return multiple values and the async modifier causes functions to push their values, _an asynchronous generator function must push multiple values_. What data type fits this description?
-
 ## Introducing Observable
 
 ES6 introduces the Generator interface, which is a combination of two different interfaces:
@@ -209,12 +269,16 @@ interface Observable {
 This interface is too simple. If iteration and observation can be thought of as long running functions, the party that is not in control needs a way to short-circuit the operation. In the case of observation, the producer is in control. As a result the consumer needs a way of terminating observation. If we use the terminology of events, we would say the consumer needs a way to _unsubscribe_. To allow for this, we make the following modification to the Observable interface:
 
 ```JavaScript
+interface Observation {
+  void unobserve();
+}
+
 interface Observable {
-  Generator [Symbol.observer](Generator observer)
+  Observation [Symbol.observer](Generator observer)
 }
 ```
 
-This version of the Observable interface both accepts _and returns_ a Generator. The consumer can short-circuit observation (unsubscribe) by invoking the return() method on the Generator object returned for the Observable @@observer method. To demonstrate how this works, let's take a look at how we can adapt a common push stream API (DOM event) to an Observable.
+This version of the Observable interface accepts a Generator and returns an Observation. The consumer can short-circuit observation (unsubscribe) by invoking the return() method on the Generator object returned for the Observable @@observer method. To demonstrate how this works, let's take a look at how we can adapt a common push stream API (DOM event) to an Observable.
 
 ```JavaScript
 // The decorate method accepts a generator and dynamically inherits a new generator from it
