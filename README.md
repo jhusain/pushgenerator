@@ -775,114 +775,67 @@ function^^ getStockPrices(stockNames, nameServiceUrl) {
 ...can be transpiled into the [async/await](https://github.com/lukehoban/ecmascript-asyncawait) feature proposed for ES7:
 
 ```JavaScript
-function getStockPrices(stockNames, nameServiceUrl) {
-    var $args = Array.prototype.slice(arguments);
+function DecoratedGenerator(generator) {
+  this.generator = generator;
+  this.done = false;
+}
 
-    return new Observable(function forEach($observer) {
-        var $done,
-            $decoratedObserver = 
-                decorate(
-                    $observer, 
-                    // code when return or throw is called on observer
-                    function() { $done = true});
+DecoratedGenerator.prototype = {};
+["next","throw","return"].forEach(function(method) {
+  DecoratedGenerator.prototype[method] = function(v) {
+    if (this.done) break;
+    var iterationResult = this.generator[method](v);
+    this.done = iterationResult.done;
+    return iterationResult;
+  };
+});
 
-        // inline invoke async function. This is like using a promise as a scheduler. Necessary
-        // because ES6 doesn't expose microtask API
-        (async function() {
-            var stockPriceServiceUrl,
-                name,
-                $v0,
-                price,
-                topStories,
-                topStory,
-                firstEverStory,
-                noop;
+function Observable(observer) {
+  this.observer = observer;
+}
 
-            // might've returned before microtask runs. This first check must run before any other
-            // code. Not that the first await inline in the variable declaration has been moved down
-            // beneath this line. 
-            if ($done) { return; }
+Observable.of = function(v) {
+  return new Observable(function(observer) {
+    var iterResult = observer.next(v);
+    if (iterResult.done) break;
+    observer.return();
+    return { dispose: function() };
+  })
+}
 
-            stockPriceServiceUrl = await getStockPriceServiceUrl();
-            if ($done) { return; }
-
-            // for...on becomes forEach.
-            // The function passed to observable.forEach becomes a next() function  the observer.
-            // If the next method returns a Promise, the Observable must wait until the Promise is
-            // resolved before pushing more values. This is how backpressure works.
-            // If there is any await expression (or another for on) in the body of the for on, the 
-            // function passed to forEach becomes an async function. Async functions return promises
-            // so backpressure will be applied.
-            await stockNames.buffer().forEach(async function($name) {
-                // At the top of every forEach next() function, we must check if the async
-                // function is short-circtuited via observer.return(). 
-                if ($done) { this.return(); return; }
-
-                name = $name;
-
-                $v0 = await getSymbol(name, $args[1]);
-                // Unsubscription might have happened after _every_ await, so expressions need to be 
-                // broken into multiple statements so that we can check for done = true after each 
-                // await, and return if done = true.             
-                if ($done) { this.return(); return; }
-
-                price = await getPrice($v0, stockPriceServiceUrl);
-                if ($done) { this.return(); return; }
-
-                topStories = [];
-
-                // body of for...on contains no awaits, so function is not async
-                await getStories.forEach(function($topStory) {
-                    // check for unsubscription
-                    if ($done) { this.return(); return; }
-                    topStory = $topStory;
-                    topStories.push(topStory);
-
-                    if (topStory.length === 2000) {
-                        // break turns into a return() and return
-                        this.return();
-                        return;
-                    }
-                });
-                if ($done) { this.return(); return; }
-
-                // await* blah just expands to await blah.returnValue()
-                firstEverStory = await getStories().returnValue();
-                if ($done) { this.return(); return; }
-
-                // yield* obs -> for(var x on obs) { yield x } -> 
-                // await obs.forEach(function(x) { if ($done) { this.return(); return; } $decoratatedObserver.next(x); })
-                await getStockPrices(getSimilarStocks(symbol), nameServiceUrl).forEach(function($v1) {
-                    // check for unsubscription
-                    if ($done) { this.return(); return; }
-
-                    $decoratedObserver.next($v1);
-                });
-                if ($done) { this.return(); return; }
-
-                // Note that this yield is not replaced.
-                noop = function*() {
-                    yield somePromise;
-                };
-
-                // Every yield statement becomes a $decoratedObserver.next()
-                $decoratedObserver.next({name: name, price: price, topStories: topStories, firstEverStory: firstEverStory });
-            })
-        }()).
-            then(
-                function(value) { 
-                    if (!$done) {
-                        decoratedObserver.return(value); 
-                    }
-                },
-                function(error) { 
-                    if (!done) {
-                        return decoratedObserver.throw(error);
-                    }
-                });
-
-        return decoratedObserver;
-    });
+Observable.fromGenerator = function(genFn) {
+  return new Observable(function(generator) {
+    var subscription,
+      iter = genFn(),
+      process = function(v) {
+        var result = iter.next(v);
+        if (result instanceof Observable) {
+          subscription = result.observer({
+            next: function(v) {
+            },
+            throw: function(e) {
+              return observer.throw(e);
+            },
+            return: function(v) {
+              process(v);
+            }
+          });
+        }
+        else {
+          return 
+        }
+      };
+      generator = new DecoratedGenerator(generator);
+      process();
+      return { 
+        dispose: function() {
+          iter.return();            
+          if (subscription) {
+            subscription.dispose();
+          }
+        }
+      };
+  })
 }
 ```
 
