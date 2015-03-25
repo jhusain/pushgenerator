@@ -328,7 +328,7 @@ Observable.fromEvent = function(dom, eventName) {
       return decoratedGenerator;
   });
 };
-
+ 
 // Adapt a DOM element's mousemoves to an Observable
 var mouseMoves = Observable.fromEvent(document.createElement('div'), "mousemove");
 
