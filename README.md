@@ -18,7 +18,7 @@ Iteration and Observation are two patterns which allow a consumer to progressive
 
 a) a value
 b) an error
-c) a final value
+c) a final value 
 
 When the producer notifies the consumer of an error or a final value, no further values will be produced.  Furthermore in both patterns the producer or consumer should be able to short-circuit at any time and elect to produce or receive no further notifications.
 
